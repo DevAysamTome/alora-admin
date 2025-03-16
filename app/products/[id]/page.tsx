@@ -7,15 +7,23 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../services/firebase';
 import ProtectedRoute from '../../../components/ProtectedRoute';
 
+// واجهة تمثل كل حجم (اسم + سعر)
+interface SizeOption {
+  name: string;
+  price: number;
+}
+
 export default function EditProductPage() {
   // الحقول الرئيسية
   const [name, setName] = useState('');
   const [price, setPrice] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
 
-  // الأحجام
-  const [sizes, setSizes] = useState<string[]>([]);
-  const [newSize, setNewSize] = useState('');
+  // الأحجام (كمصفوفة من الكائنات)
+  const [sizes, setSizes] = useState<SizeOption[]>([]);
+  // الحقول المؤقتة لإضافة حجم جديد
+  const [newSizeName, setNewSizeName] = useState('');
+  const [newSizePrice, setNewSizePrice] = useState<number>(0);
 
   // رابط الصورة القديم
   const [oldImageURL, setOldImageURL] = useState('');
@@ -45,6 +53,7 @@ export default function EditProductPage() {
           setName(productData.name || '');
           setPrice(productData.price || 0);
           setDiscount(productData.discount || 0);
+          // إذا الأحجام مخزنة ككائنات [{ name, price }, ...]، نحولها إلى Array<SizeOption>
           setSizes(productData.sizes || []);
           setOldImageURL(productData.imageURL || '');
           setSelectedCategoryId(productData.categoryId || '');
@@ -83,15 +92,20 @@ export default function EditProductPage() {
 
   // إضافة حجم جديد
   const handleAddSize = () => {
-    if (newSize.trim()) {
-      setSizes((prev) => [...prev, newSize.trim()]);
-      setNewSize('');
+    if (newSizeName.trim()) {
+      const newSizeObj: SizeOption = {
+        name: newSizeName.trim(),
+        price: newSizePrice,
+      };
+      setSizes((prev) => [...prev, newSizeObj]);
+      setNewSizeName('');
+      setNewSizePrice(0);
     }
   };
 
   // حذف حجم من المصفوفة
-  const handleRemoveSize = (sizeToRemove: string) => {
-    setSizes((prev) => prev.filter((size) => size !== sizeToRemove));
+  const handleRemoveSize = (sizeToRemove: SizeOption) => {
+    setSizes((prev) => prev.filter((sz) => sz !== sizeToRemove));
   };
 
   // اختيار ملف الصورة الجديد
@@ -122,7 +136,7 @@ export default function EditProductPage() {
         name,
         price,
         discount,
-        sizes,
+        sizes, // مصفوفة [{ name, price }, ...]
         imageURL: newImageURL,
         categoryId: selectedCategoryId,
       });
@@ -189,16 +203,23 @@ export default function EditProductPage() {
             </p>
           </div>
 
-          {/* الأحجام */}
+          {/* الأحجام (اسم + سعر) */}
           <div>
             <label className="block mb-1 text-gray-700">الأحجام:</label>
             <div className="flex gap-2 mb-2">
               <input
                 type="text"
-                className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 flex-1"
-                placeholder="أدخل حجمًا جديدًا"
-                value={newSize}
-                onChange={(e) => setNewSize(e.target.value)}
+                className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                placeholder="اسم الحجم (مثلاً XL)"
+                value={newSizeName}
+                onChange={(e) => setNewSizeName(e.target.value)}
+              />
+              <input
+                type="number"
+                className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 w-24"
+                placeholder="سعر الحجم"
+                value={newSizePrice}
+                onChange={(e) => setNewSizePrice(Number(e.target.value))}
               />
               <button
                 type="button"
@@ -209,16 +230,18 @@ export default function EditProductPage() {
               </button>
             </div>
             {sizes.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {sizes.map((size) => (
+              <div className="flex flex-col gap-2">
+                {sizes.map((sz, idx) => (
                   <div
-                    key={size}
-                    className="flex items-center bg-gray-100 border rounded px-2 py-1"
+                    key={idx}
+                    className="flex items-center justify-between bg-gray-100 border rounded px-2 py-1"
                   >
-                    <span className="mr-2">{size}</span>
+                    <span className="mr-2">
+                      {sz.name} - {sz.price} ريال
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveSize(size)}
+                      onClick={() => handleRemoveSize(sz)}
                       className="text-red-500 hover:text-red-700"
                     >
                       x

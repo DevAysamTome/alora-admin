@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../services/firebase';
@@ -13,15 +13,24 @@ interface CategoryData {
   imageUrl?: string;
 }
 
+// نوع لكل حجم
+interface SizeOption {
+  name: string;   // اسم الحجم
+  price: number;  // سعر الحجم
+}
+
 export default function AddProductPage() {
   // الحقول الرئيسية
   const [name, setName] = useState('');
   const [price, setPrice] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
 
-  // الأحجام
-  const [sizes, setSizes] = useState<string[]>([]);
-  const [newSize, setNewSize] = useState('');
+  // الأحجام (كمصفوفة من الكائنات)
+  const [sizes, setSizes] = useState<SizeOption[]>([]);
+
+  // الحقول المؤقتة لإضافة حجم جديد
+  const [newSizeName, setNewSizeName] = useState('');
+  const [newSizePrice, setNewSizePrice] = useState<number>(0);
 
   // ملف الصورة
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -54,15 +63,23 @@ export default function AddProductPage() {
 
   // إضافة حجم جديد إلى المصفوفة
   const handleAddSize = () => {
-    if (newSize.trim()) {
-      setSizes((prev) => [...prev, newSize.trim()]);
-      setNewSize('');
+    if (newSizeName.trim()) {
+      // ننشئ كائن الحجم
+      const newSizeObj: SizeOption = {
+        name: newSizeName.trim(),
+        price: newSizePrice,
+      };
+      setSizes((prev) => [...prev, newSizeObj]);
+
+      // إعادة تعيين الحقول
+      setNewSizeName('');
+      setNewSizePrice(0);
     }
   };
 
   // حذف حجم من المصفوفة
-  const handleRemoveSize = (sizeToRemove: string) => {
-    setSizes((prev) => prev.filter((size) => size !== sizeToRemove));
+  const handleRemoveSize = (sizeToRemove: SizeOption) => {
+    setSizes((prev) => prev.filter((sz) => sz !== sizeToRemove));
   };
 
   // اختيار ملف الصورة
@@ -73,7 +90,7 @@ export default function AddProductPage() {
   };
 
   // إضافة المنتج
-  const handleAddProduct = async (e: React.FormEvent) => {
+  const handleAddProduct = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
@@ -94,9 +111,10 @@ export default function AddProductPage() {
         name,
         price,
         discount,
-        sizes,
-        imageURL: downloadURL, // رابط الصورة
-        categoryId: selectedCategoryId, // معرّف الصنف
+        discountedPrice,
+        sizes,               // هنا نخزن الأحجام ككائنات [{name, price}, ...]
+        imageURL: downloadURL,
+        categoryId: selectedCategoryId,
       });
 
       // العودة لقائمة المنتجات
@@ -152,16 +170,23 @@ export default function AddProductPage() {
             </p>
           </div>
 
-          {/* الأحجام */}
+          {/* الأحجام مع السعر الخاص بكل حجم */}
           <div>
-            <label className="block mb-1 text-gray-700">الأحجام:</label>
+            <label className="block mb-1 text-gray-700">الأحجام (لكل حجم سعره الخاص):</label>
             <div className="flex gap-2 mb-2">
               <input
                 type="text"
+                placeholder="اسم الحجم"
                 className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 flex-1"
-                placeholder="أدخل حجمًا جديدًا"
-                value={newSize}
-                onChange={(e) => setNewSize(e.target.value)}
+                value={newSizeName}
+                onChange={(e) => setNewSizeName(e.target.value)}
+              />
+              <input
+                type="number"
+                placeholder="سعر الحجم"
+                className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 w-24"
+                value={newSizePrice}
+                onChange={(e) => setNewSizePrice(Number(e.target.value))}
               />
               <button
                 type="button"
@@ -171,17 +196,20 @@ export default function AddProductPage() {
                 إضافة
               </button>
             </div>
+            {/* عرض الأحجام */}
             {sizes.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {sizes.map((size) => (
+              <div className="flex flex-col gap-2">
+                {sizes.map((sz, idx) => (
                   <div
-                    key={size}
-                    className="flex items-center bg-gray-100 border rounded px-2 py-1"
+                    key={idx}
+                    className="flex items-center justify-between bg-gray-100 border rounded px-2 py-1"
                   >
-                    <span className="mr-2">{size}</span>
+                    <span className="mr-2">
+                      {sz.name} - {sz.price} ريال
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveSize(size)}
+                      onClick={() => handleRemoveSize(sz)}
                       className="text-red-500 hover:text-red-700"
                     >
                       x
