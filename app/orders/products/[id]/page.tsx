@@ -1,25 +1,19 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { useRouter, useParams } from 'next/navigation';
+import { doc, getDoc, updateDoc, getDocs, collection } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../services/firebase';
-import { useRouter } from 'next/navigation';
 import ProtectedRoute from '../../../components/ProtectedRoute';
 
-interface CategoryData {
-  id: string;
-  name: string;
-  imageUrl?: string;
-}
-
-// نوع لكل حجم
+// واجهة تمثل كل حجم (اسم + سعر)
 interface SizeOption {
-  name: string;   // اسم الحجم
-  price: number;  // سعر الحجم
+  name: string;
+  price: number;
 }
 
-export default function AddProductPage() {
+export default function EditProductPage() {
   // الحقول الرئيسية
   const [name, setName] = useState('');
   const [price, setPrice] = useState<number>(0);
@@ -27,30 +21,69 @@ export default function AddProductPage() {
 
   // الأحجام (كمصفوفة من الكائنات)
   const [sizes, setSizes] = useState<SizeOption[]>([]);
-
   // الحقول المؤقتة لإضافة حجم جديد
   const [newSizeName, setNewSizeName] = useState('');
   const [newSizePrice, setNewSizePrice] = useState<number>(0);
 
-  // ملف الصورة
+  // رابط الصورة القديم
+  const [oldImageURL, setOldImageURL] = useState('');
+  // ملف الصورة الجديد (إن اختاره المستخدم)
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   // الأصناف
-  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(''); // الصنف المختار
 
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  // الماركات
+  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(''); // الماركة المختارة
 
-  // جلب الأصناف من Firestore
+  const [loading, setLoading] = useState(true);
+
+  const router = useRouter();
+  const params = useParams();
+  const { id } = params as { id: string };
+
+  // جلب بيانات المنتج من Firestore
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        const docRef = doc(db, 'products', id);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const productData = docSnap.data();
+          setName(productData.name || '');
+          setPrice(productData.price || 0);
+          setDiscount(productData.discount || 0);
+          // إذا الأحجام مخزنة ككائنات [{ name, price }, ...]، نحولها إلى Array<SizeOption>
+          setSizes(productData.sizes || []);
+          setOldImageURL(productData.imageURL || '');
+          setSelectedCategoryId(productData.categoryId || '');
+          setSelectedBrandId(productData.brandId || '');
+        } else {
+          alert('المنتج غير موجود!');
+          router.push('/products');
+        }
+      } catch (error) {
+        console.error('خطأ في جلب المنتج:', error);
+        alert('حدث خطأ أثناء جلب المنتج.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProduct();
+  }, [id, router]);
+
+  // جلب الأصناف
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         const snap = await getDocs(collection(db, 'categories'));
-        const cats: CategoryData[] = snap.docs.map((doc) => ({
-          id: doc.id,
-          name: doc.data().name || '',
-          imageUrl: doc.data().imageUrl || '',
+        const cats = snap.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name || '',
         }));
         setCategories(cats);
       } catch (error) {
@@ -61,17 +94,32 @@ export default function AddProductPage() {
     fetchCategories();
   }, []);
 
-  // إضافة حجم جديد إلى المصفوفة
+  // جلب الماركات
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'brands'));
+        const fetchedBrands = snap.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name || '',
+        }));
+        setBrands(fetchedBrands);
+      } catch (error) {
+        console.error('خطأ في جلب الماركات:', error);
+      }
+    };
+
+    fetchBrands();
+  }, []);
+
+  // إضافة حجم جديد
   const handleAddSize = () => {
     if (newSizeName.trim()) {
-      // ننشئ كائن الحجم
       const newSizeObj: SizeOption = {
         name: newSizeName.trim(),
         price: newSizePrice,
       };
       setSizes((prev) => [...prev, newSizeObj]);
-
-      // إعادة تعيين الحقول
       setNewSizeName('');
       setNewSizePrice(0);
     }
@@ -82,56 +130,64 @@ export default function AddProductPage() {
     setSizes((prev) => prev.filter((sz) => sz !== sizeToRemove));
   };
 
-  // اختيار ملف الصورة
+  // اختيار ملف الصورة الجديد
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setImageFile(e.target.files[0]);
     }
   };
 
-  // إضافة المنتج
-  const handleAddProduct = async (e: FormEvent) => {
+  // تحديث المنتج
+  const handleUpdate = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // حساب السعر بعد الخصم
-      const discountedPrice = price - (price * discount) / 100;
+      const docRef = doc(db, 'products', id);
 
-      // رفع الصورة (إن وجدت) والحصول على رابطها
-      let downloadURL = '';
+      // رفع الصورة الجديدة (إن وجدت)
+      let newImageURL = oldImageURL;
       if (imageFile) {
         const storageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
         await uploadBytes(storageRef, imageFile);
-        downloadURL = await getDownloadURL(storageRef);
+        newImageURL = await getDownloadURL(storageRef);
       }
 
-      // إضافة المستند إلى Firestore
-      await addDoc(collection(db, 'products'), {
+      // تحديث المستند في Firestore مع تمرير معرّف الصنف والماركة
+      await updateDoc(docRef, {
         name,
         price,
         discount,
-        discountedPrice,
-        sizes,               // هنا نخزن الأحجام ككائنات [{name, price}, ...]
-        imageURL: downloadURL,
+        sizes, // مصفوفة [{ name, price }, ...]
+        imageURL: newImageURL,
         categoryId: selectedCategoryId,
+        brandId: selectedBrandId,
       });
 
-      // العودة لقائمة المنتجات
-      router.push('/products');
+      router.push('/products'); // العودة لقائمة المنتجات
     } catch (error) {
-      console.error('خطأ في إضافة المنتج:', error);
-      alert('حدث خطأ أثناء إضافة المنتج.');
+      console.error('خطأ في تحديث المنتج:', error);
+      alert('حدث خطأ أثناء تحديث المنتج.');
     } finally {
       setLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <ProtectedRoute>
+        <div className="flex justify-center items-center h-64">
+          <div className="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
   return (
     <ProtectedRoute>
       <div className="max-w-md mx-auto bg-white p-6 rounded shadow mt-6">
-        <h1 className="text-xl font-bold mb-4">إضافة منتج جديد</h1>
-        <form onSubmit={handleAddProduct} className="space-y-4">
+        <h1 className="text-xl font-bold mb-4">تعديل المنتج</h1>
+        <form onSubmit={handleUpdate} className="space-y-4">
           {/* اسم المنتج */}
           <div>
             <label className="block mb-1 text-gray-700">اسم المنتج:</label>
@@ -170,21 +226,21 @@ export default function AddProductPage() {
             </p>
           </div>
 
-          {/* الأحجام مع السعر الخاص بكل حجم */}
+          {/* الأحجام (اسم + سعر) */}
           <div>
-            <label className="block mb-1 text-gray-700">الأحجام (لكل حجم سعره الخاص):</label>
+            <label className="block mb-1 text-gray-700">الأحجام:</label>
             <div className="flex gap-2 mb-2">
               <input
                 type="text"
-                placeholder="اسم الحجم"
-                className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 flex-1"
+                className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                placeholder="اسم الحجم (مثلاً XL)"
                 value={newSizeName}
                 onChange={(e) => setNewSizeName(e.target.value)}
               />
               <input
                 type="number"
-                placeholder="سعر الحجم"
                 className="border px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 w-24"
+                placeholder="سعر الحجم"
                 value={newSizePrice}
                 onChange={(e) => setNewSizePrice(Number(e.target.value))}
               />
@@ -196,7 +252,6 @@ export default function AddProductPage() {
                 إضافة
               </button>
             </div>
-            {/* عرض الأحجام */}
             {sizes.length > 0 && (
               <div className="flex flex-col gap-2">
                 {sizes.map((sz, idx) => (
@@ -236,14 +291,42 @@ export default function AddProductPage() {
                 </option>
               ))}
             </select>
-            <p className="text-sm text-gray-500 mt-1">
-              تم جلب هذه الأصناف من قاعدة البيانات.
-            </p>
+            <p className="text-sm text-gray-500 mt-1">الأصناف من قاعدة البيانات.</p>
           </div>
 
-          {/* رفع الصورة */}
+          {/* اختيار الماركة */}
           <div>
-            <label className="block mb-1 text-gray-700">الصورة:</label>
+            <label className="block mb-1 text-gray-700">اختر الماركة:</label>
+            <select
+              className="border w-full px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+              value={selectedBrandId}
+              onChange={(e) => setSelectedBrandId(e.target.value)}
+              required
+            >
+              <option value="">اختر الماركة</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-sm text-gray-500 mt-1">الماركات من قاعدة البيانات.</p>
+          </div>
+
+          {/* الصورة القديمة + اختيار صورة جديدة */}
+          <div>
+            <label className="block mb-1 text-gray-700">الصورة الحالية:</label>
+            {oldImageURL ? (
+              <img
+                src={oldImageURL}
+                alt="صورة المنتج"
+                className="w-32 h-32 object-cover mb-2"
+              />
+            ) : (
+              <p className="text-sm text-gray-500 mb-2">لا توجد صورة سابقة.</p>
+            )}
+
+            <label className="block mb-1 text-gray-700">اختر صورة جديدة (اختياري):</label>
             <input
               type="file"
               accept="image/*"
@@ -255,17 +338,17 @@ export default function AddProductPage() {
                          hover:file:bg-blue-100"
             />
             <p className="text-sm text-gray-500 mt-1">
-              اختر صورة للمنتج (png أو jpg).
+              إذا لم تختر صورة جديدة، ستبقى الصورة القديمة كما هي.
             </p>
           </div>
 
-          {/* زر الإضافة */}
+          {/* زر التحديث */}
           <button
             type="submit"
             disabled={loading}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
           >
-            {loading ? 'جاري الإضافة...' : 'إضافة المنتج'}
+            {loading ? 'جاري التحديث...' : 'تحديث المنتج'}
           </button>
         </form>
       </div>
