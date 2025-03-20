@@ -11,7 +11,8 @@ import { useRouter, useParams } from 'next/navigation';
 export default function EditBrandPage() {
   const router = useRouter();
   const params = useParams();
-  const brandId = params.id;
+  // تأكيد أن المعرف موجود ونحوله إلى string
+  const { id: brandId } = params as { id: string };
 
   const [name, setName] = useState('');
   const [existingImageUrl, setExistingImageUrl] = useState('');
@@ -70,7 +71,7 @@ export default function EditBrandPage() {
 
   // التعامل مع اختيار ملف الصورة الجديد
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if(e.target.files && e.target.files[0]) {
+    if (e.target.files && e.target.files[0]) {
       setImageFile(e.target.files[0]);
     }
   };
@@ -108,9 +109,11 @@ export default function EditBrandPage() {
 
   if (fetching) {
     return (
-      <div className="flex justify-center items-center py-4">
-        <div className="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
+      <ProtectedRoute>
+        <div className="flex justify-center items-center py-4">
+          <div className="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </ProtectedRoute>
     );
   }
 
