@@ -30,6 +30,11 @@ export default function AddProductPage() {
   const [name, setName] = useState('');
   const [price, setPrice] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
+  const [description, setDescription] = useState('');
+
+  // الحقلان الجديدان
+  const [quantity, setQuantity] = useState<number>(0);      // الكمية المتوفرة
+  const [isAvailable, setIsAvailable] = useState<boolean>(true); // هل المنتج متاح؟
 
   // الأحجام (كمصفوفة من الكائنات)
   const [sizes, setSizes] = useState<SizeOption[]>([]);
@@ -45,9 +50,9 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(''); // الصنف المختار
 
-  // الماركات
+  // الماركات (اختياري)
   const [brands, setBrands] = useState<BrandData[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string>(''); // الماركة المختارة
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(''); // الماركة المختارة (اختياري)
 
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -135,17 +140,27 @@ export default function AddProductPage() {
         downloadURL = await getDownloadURL(storageRef);
       }
 
-      // إضافة المستند إلى Firestore مع ربطه بالصنف والماركة المختارين
-      await addDoc(collection(db, 'products'), {
+      // بناء كائن المنتج
+      const productData: any = {
         name,
         price,
         discount,
         discountedPrice,
-        sizes,               // تخزين الأحجام ككائنات [{name, price}, ...]
+        description,
+        quantity,       // الكمية
+        isAvailable,    // التوفّر
+        sizes,          // الأحجام
         imageURL: downloadURL,
         categoryId: selectedCategoryId,
-        brandId: selectedBrandId,
-      });
+      };
+
+      // إذا المستخدم اختار ماركة
+      if (selectedBrandId) {
+        productData.brandId = selectedBrandId;
+      }
+
+      // إضافة المستند إلى Firestore
+      await addDoc(collection(db, 'products'), productData);
 
       // العودة لقائمة المنتجات
       router.push('/products');
@@ -198,6 +213,48 @@ export default function AddProductPage() {
             <p className="text-sm text-gray-500 mt-1">
               أدخل قيمة الخصم كنسبة مئوية (مثلاً 10 يعني 10%).
             </p>
+          </div>
+
+          {/* الوصف */}
+          <div>
+            <label className="block mb-1 text-gray-700">الوصف:</label>
+            <textarea
+              className="border w-full px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+            <p className="text-sm text-gray-500 mt-1">
+              أدخل وصفًا موجزًا للمنتج.
+            </p>
+          </div>
+
+          {/* الكمية */}
+          <div>
+            <label className="block mb-1 text-gray-700">الكمية المتوفرة:</label>
+            <input
+              type="number"
+              className="border w-full px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))}
+              required
+            />
+            <p className="text-sm text-gray-500 mt-1">
+              أدخل عدد الوحدات المتوفرة من المنتج.
+            </p>
+          </div>
+
+          {/* هل المنتج متاح أم لا */}
+          <div className="flex items-center gap-2">
+            <label className="block mb-1 text-gray-700">متاح؟</label>
+            <input
+              type="checkbox"
+              checked={isAvailable}
+              onChange={(e) => setIsAvailable(e.target.checked)}
+            />
+            <span className="text-sm text-gray-500">
+              إن كان محددًا، يعتبر المنتج متاحًا للعرض والشراء.
+            </span>
           </div>
 
           {/* الأحجام مع السعر الخاص بكل حجم */}
@@ -271,16 +328,15 @@ export default function AddProductPage() {
             </p>
           </div>
 
-          {/* اختيار الماركة */}
+          {/* اختيار الماركة (اختياري) */}
           <div>
-            <label className="block mb-1 text-gray-700">اختر الماركة:</label>
+            <label className="block mb-1 text-gray-700">اختر الماركة (اختياري):</label>
             <select
               className="border w-full px-3 py-2 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
               value={selectedBrandId}
               onChange={(e) => setSelectedBrandId(e.target.value)}
-              required
             >
-              <option value="">اختر الماركة</option>
+              <option value="">بدون ماركة</option>
               {brands.map((brand) => (
                 <option key={brand.id} value={brand.id}>
                   {brand.name}
@@ -288,7 +344,7 @@ export default function AddProductPage() {
               ))}
             </select>
             <p className="text-sm text-gray-500 mt-1">
-              تم جلب هذه الماركات من قاعدة البيانات.
+              يمكنك اختيار الماركة إن وجدت. إن تركته فارغًا، سيعتبر المنتج بلا ماركة.
             </p>
           </div>
 
