@@ -1,7 +1,7 @@
 "use client";
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MdDashboard, MdShoppingCart, MdCategory, MdHome, MdClose, MdDiscount, MdBrandingWatermark } from 'react-icons/md';
+import { MdDashboard, MdShoppingCart, MdCategory, MdHome, MdClose, MdDiscount, MdBrandingWatermark, MdSettings } from 'react-icons/md';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ const navItems = [
   { label: 'الأصناف', href: '/categories', icon: MdCategory },
   { label: 'صور العروض', href: '/promo-images', icon: MdDiscount },
   { label: 'العلامات التجارية', href: '/brands', icon: MdBrandingWatermark },
+  { label: 'الاعدادات', href: '/settings', icon: MdSettings },
 
 ];
 
