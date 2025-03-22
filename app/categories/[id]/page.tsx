@@ -1,14 +1,8 @@
-"use client";
+'use client';
 
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter, useParams } from "next/navigation";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  updateDoc,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../../services/firebase";
 import ProtectedRoute from "../../../components/ProtectedRoute";
@@ -21,13 +15,13 @@ export default function EditCategoryPage() {
 
   const router = useRouter();
   const params = useParams();
-  // نفترض أن معرّف المستند (القديم) = اسم الصنف القديم
-  const { id: oldName } = params as { id: string };
+  const { id } = params as { id: string };
+  // فك ترميز معرّف الصنف لاسترجاع الاسم الأصلي
+  const oldName = decodeURIComponent(id);
 
   useEffect(() => {
     const fetchCategory = async () => {
       try {
-        // جلب المستند القديم
         const docRef = doc(db, "categories", oldName);
         const docSnap = await getDoc(docRef);
 
@@ -63,15 +57,16 @@ export default function EditCategoryPage() {
 
     try {
       const newName = name.trim();
-      // إذا المستخدم لم يغيّر الاسم
       if (newName === oldName) {
-        await updateSameDoc(); // تحديث عادي على نفس المستند
+        await updateSameDoc(newName);
+        alert("تم تحديث الصنف بنجاح!");
+        router.push("/categories");
       } else {
-        await renameDoc(); // إنشاء مستند جديد وحذف القديم
+        await renameDoc(newName);
+        alert("تم تحديث الصنف بنجاح!");
+        // تحديث الرابط ليتطابق مع الاسم الجديد بعد التشفير
+        router.push(`/categories/${encodeURIComponent(newName)}`);
       }
-
-      alert("تم تحديث الصنف بنجاح!");
-      router.push("/categories");
     } catch (error) {
       console.error("خطأ في تحديث الصنف:", error);
       alert("حدث خطأ أثناء تحديث الصنف.");
@@ -80,12 +75,11 @@ export default function EditCategoryPage() {
     }
   };
 
-  // تحديث عادي على نفس المستند (في حالة الاسم لم يتغير)
-  const updateSameDoc = async () => {
+  // تحديث نفس المستند إذا لم يتغير الاسم
+  const updateSameDoc = async (newName: string) => {
     const docRef = doc(db, "categories", oldName);
-
-    // إذا اختار المستخدم ملفًا جديدًا، ارفعه
     let newImageUrl = oldImageUrl;
+
     if (imageFile) {
       const storageRef = ref(
         storage,
@@ -95,18 +89,14 @@ export default function EditCategoryPage() {
       newImageUrl = await getDownloadURL(storageRef);
     }
 
-    // حدّث المستند نفسه
     await updateDoc(docRef, {
-      name: name.trim(),
+      name: newName,
       imageUrl: newImageUrl,
     });
   };
 
-  // إذا تغيّر الاسم -> ننشئ مستند جديد بمعرّف = newName وننسخ البيانات ثم نحذف القديم
-  const renameDoc = async () => {
-    const newName = name.trim();
-
-    // ارفع الصورة إن وجدت
+  // إنشاء مستند جديد بمعرّف الاسم الجديد وحذف المستند القديم
+  const renameDoc = async (newName: string) => {
     let newImageUrl = oldImageUrl;
     if (imageFile) {
       const storageRef = ref(
@@ -117,14 +107,14 @@ export default function EditCategoryPage() {
       newImageUrl = await getDownloadURL(storageRef);
     }
 
-    // 1) أنشئ مستند جديد بالاسم الجديد
+    // إنشاء مستند جديد بالاسم الجديد
     const newDocRef = doc(db, "categories", newName);
     await setDoc(newDocRef, {
       name: newName,
       imageUrl: newImageUrl,
     });
 
-    // 2) احذف المستند القديم
+    // حذف المستند القديم
     const oldDocRef = doc(db, "categories", oldName);
     await deleteDoc(oldDocRef);
   };

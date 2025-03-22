@@ -133,9 +133,9 @@ export default function CategoriesPage() {
                     <td className="px-4 py-2 whitespace-nowrap">{category.name}</td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       <div className="flex gap-2">
-                        {/* زر تعديل ينقلك للصفحة [id] */}
+                        {/* زر تعديل ينقلك للصفحة [id] مع ترميز المعرف لضمان سلامة الرابط */}
                         <Link
-                          href={`/categories/${category.id}`}
+                          href={`/categories/${encodeURIComponent(category.id)}`}
                           className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
                         >
                           تعديل
