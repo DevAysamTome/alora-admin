@@ -32,8 +32,10 @@ export default function EditProductPage() {
 
   // رابط الصورة القديم
   const [oldImageURL, setOldImageURL] = useState("");
+  const [oldImages, setOldImages] = useState<string[]>([]);
   // ملف الصورة الجديد (إن اختاره المستخدم)
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
 
   // الأصناف
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
@@ -73,7 +75,16 @@ export default function EditProductPage() {
 
           // إذا الأحجام مخزنة ككائنات [{ name, price }, ...]
           setSizes(productData.sizes || []);
-          setOldImageURL(productData.imageURL || "");
+          
+          // جلب الصور القديمة
+          if (productData.images && Array.isArray(productData.images)) {
+            setOldImages(productData.images);
+            setOldImageURL(productData.images[0] || "");
+          } else if (productData.imageURL) {
+            setOldImageURL(productData.imageURL);
+            setOldImages([productData.imageURL]);
+          }
+          
           setSelectedCategoryId(productData.categoryId || "");
           setSelectedBrandId(productData.brandId || "");
         } else {
@@ -147,8 +158,34 @@ export default function EditProductPage() {
 
   // اختيار ملف الصورة الجديد
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setImageFiles(prev => [...prev, ...newFiles]);
+      
+      // Create preview URLs for the new files
+      newFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviewUrls(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  // حذف صورة
+  const handleRemoveImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // حذف صورة قديمة
+  const handleRemoveOldImage = (index: number) => {
+    setOldImages(prev => prev.filter((_, i) => i !== index));
+    if (index === 0 && oldImages.length > 1) {
+      setOldImageURL(oldImages[1]);
+    } else if (oldImages.length === 1) {
+      setOldImageURL("");
     }
   };
 
@@ -160,13 +197,17 @@ export default function EditProductPage() {
     try {
       const docRef = doc(db, "products", id);
 
-      // رفع الصورة الجديدة (إن وجدت)
-      let newImageURL = oldImageURL;
-      if (imageFile) {
-        const storageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(storageRef, imageFile);
-        newImageURL = await getDownloadURL(storageRef);
+      // رفع الصور الجديدة والحصول على روابطها
+      const newImageURLs: string[] = [];
+      for (const file of imageFiles) {
+        const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const downloadURL = await getDownloadURL(storageRef);
+        newImageURLs.push(downloadURL);
       }
+
+      // دمج الصور القديمة مع الجديدة
+      const allImages = [...oldImages, ...newImageURLs];
 
       // تحديث المستند في Firestore
       await updateDoc(docRef, {
@@ -177,7 +218,8 @@ export default function EditProductPage() {
         quantity,
         isAvailable,
         sizes, // مصفوفة [{ name, price }, ...]
-        imageURL: newImageURL,
+        imageURL: allImages[0] || "", // الصورة الأولى كصورة افتراضية
+        images: allImages, // جميع الصور
         categoryId: selectedCategoryId,
         // الماركة اختياري => إذا selectedBrandId فارغ، نضعه فارغًا أو نحذفه
         brandId: selectedBrandId || "",
@@ -371,21 +413,35 @@ export default function EditProductPage() {
 
           {/* الصورة القديمة + اختيار صورة جديدة */}
           <div>
-            <label className="block mb-1 text-gray-700">الصورة الحالية:</label>
-            {oldImageURL ? (
-              <img
-                src={oldImageURL}
-                alt="صورة المنتج"
-                className="w-32 h-32 object-cover mb-2"
-              />
+            <label className="block mb-1 text-gray-700">الصور الحالية:</label>
+            {oldImages.length > 0 ? (
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                {oldImages.map((url, index) => (
+                  <div key={index} className="relative">
+                    <img
+                      src={url}
+                      alt={`صورة ${index + 1}`}
+                      className="w-full h-32 object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveOldImage(index)}
+                      className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-full m-1 hover:bg-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p className="text-sm text-gray-500 mb-2">لا توجد صورة سابقة.</p>
+              <p className="text-sm text-gray-500 mb-2">لا توجد صور سابقة.</p>
             )}
 
-            <label className="block mb-1 text-gray-700">اختر صورة جديدة (اختياري):</label>
+            <label className="block mb-1 text-gray-700">إضافة صور جديدة:</label>
             <input
               type="file"
               accept="image/*"
+              multiple
               onChange={handleFileChange}
               className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4
                          file:rounded file:border-0
@@ -394,8 +450,30 @@ export default function EditProductPage() {
                          hover:file:bg-blue-100"
             />
             <p className="text-sm text-gray-500 mt-1">
-              إذا لم تختر صورة جديدة، ستبقى الصورة القديمة كما هي.
+              يمكنك اختيار أكثر من صورة للمنتج (png أو jpg).
             </p>
+
+            {/* عرض الصور الجديدة المختارة */}
+            {imagePreviewUrls.length > 0 && (
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                {imagePreviewUrls.map((url, index) => (
+                  <div key={index} className="relative">
+                    <img
+                      src={url}
+                      alt={`صورة جديدة ${index + 1}`}
+                      className="w-full h-32 object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-full m-1 hover:bg-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* زر التحديث */}

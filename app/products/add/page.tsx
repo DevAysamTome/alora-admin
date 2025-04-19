@@ -44,7 +44,8 @@ export default function AddProductPage() {
   const [newSizePrice, setNewSizePrice] = useState<number>(0);
 
   // ملف الصورة
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
 
   // الأصناف
   const [categories, setCategories] = useState<CategoryData[]>([]);
@@ -118,9 +119,25 @@ export default function AddProductPage() {
 
   // اختيار ملف الصورة
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setImageFiles(prev => [...prev, ...newFiles]);
+      
+      // Create preview URLs for the new files
+      newFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviewUrls(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
     }
+  };
+
+  // حذف صورة
+  const handleRemoveImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   // إضافة المنتج
@@ -132,12 +149,13 @@ export default function AddProductPage() {
       // حساب السعر بعد الخصم
       const discountedPrice = price - (price * discount) / 100;
 
-      // رفع الصورة (إن وجدت) والحصول على رابطها
-      let downloadURL = '';
-      if (imageFile) {
-        const storageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(storageRef, imageFile);
-        downloadURL = await getDownloadURL(storageRef);
+      // رفع الصور والحصول على روابطها
+      const imageURLs: string[] = [];
+      for (const file of imageFiles) {
+        const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const downloadURL = await getDownloadURL(storageRef);
+        imageURLs.push(downloadURL);
       }
 
       // بناء كائن المنتج
@@ -150,9 +168,16 @@ export default function AddProductPage() {
         quantity,       // الكمية
         isAvailable,    // التوفّر
         sizes,          // الأحجام
-        imageURL: downloadURL,
         categoryId: selectedCategoryId,
       };
+
+      // إضافة الصور بالشكل المناسب
+      if (imageURLs.length > 0) {
+        // دائماً نضع الصورة الأولى كصورة افتراضية
+        productData.imageURL = imageURLs[0];
+        // نضع جميع الصور في مصفوفة images
+        productData.images = imageURLs;
+      }
 
       // إذا المستخدم اختار ماركة
       if (selectedBrandId) {
@@ -348,12 +373,13 @@ export default function AddProductPage() {
             </p>
           </div>
 
-          {/* رفع الصورة */}
+          {/* رفع الصور */}
           <div>
-            <label className="block mb-1 text-gray-700">الصورة:</label>
+            <label className="block mb-1 text-gray-700">الصور:</label>
             <input
               type="file"
               accept="image/*"
+              multiple
               onChange={handleFileChange}
               className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4
                          file:rounded file:border-0
@@ -362,8 +388,30 @@ export default function AddProductPage() {
                          hover:file:bg-blue-100"
             />
             <p className="text-sm text-gray-500 mt-1">
-              اختر صورة للمنتج (png أو jpg).
+              يمكنك اختيار أكثر من صورة للمنتج (png أو jpg).
             </p>
+            
+            {/* عرض الصور المختارة */}
+            {imagePreviewUrls.length > 0 && (
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                {imagePreviewUrls.map((url, index) => (
+                  <div key={index} className="relative">
+                    <img
+                      src={url}
+                      alt={`صورة ${index + 1}`}
+                      className="w-full h-32 object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-full m-1 hover:bg-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* زر الإضافة */}
